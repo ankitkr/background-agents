@@ -39,11 +39,11 @@ describe("route policy table", () => {
   });
 
   it("publishes the complete canonical route catalog", () => {
-    expect(routes).toHaveLength(233);
+    expect(routes).toHaveLength(235);
 
     const paths = routes.map((route) => route.path);
-    expect(new Set(paths).size).toBe(177);
-    expect(new Set(routes.map((route) => `${route.method}:${route.path}`)).size).toBe(233);
+    expect(new Set(paths).size).toBe(178);
+    expect(new Set(routes.map((route) => `${route.method}:${route.path}`)).size).toBe(235);
     expect(routeFor("POST", "/sessions/session-1/sandbox-memory/search")).toMatchObject({
       authentication: { kind: "sandbox" },
       supportedScmProviders: "all",
@@ -518,6 +518,8 @@ describe("route policy table", () => {
     ],
     ["DELETE", `/model-provider-accounts/anthropic/authorization-codes/${"0".repeat(64)}`, "user"],
     ["GET", "/model-provider-accounts/legacy-credentials", "user"],
+    ["GET", `/model-provider-accounts/${"0".repeat(32)}/channel-associations`, "user"],
+    ["PUT", `/model-provider-accounts/${"0".repeat(32)}/channel-associations`, "user"],
     ["GET", "/model-provider-account-defaults", "user"],
     ["PUT", "/model-provider-account-defaults/openai", "user"],
   ])("owns the auth policy for %s %s", (method, path, expectedKind) => {
