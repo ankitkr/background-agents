@@ -57,6 +57,7 @@ function stores(
   return {
     defaults: { get: vi.fn(async (provider: "openai" | "xai") => defaults.get(provider) ?? null) },
     accounts: { getById: vi.fn(async (id: string) => accounts.get(id) ?? null) },
+    channelDefaults: { getAccountId: vi.fn(async () => null) },
     adapters: { get: vi.fn(() => ({})) },
   };
 }
@@ -123,6 +124,173 @@ describe("Codex connected-account scope", () => {
     expect(unattended[0]).toEqual({
       provider: "openai",
       authMode: "api_key",
+      selectionSource: "unattended_policy",
+    });
+  });
+});
+
+const CHANNEL_ACCOUNT = "a".repeat(32);
+const WORKSPACE_ACCOUNT = "b".repeat(32);
+const SLACK_CHANNEL = { source: "slack", channelId: "C1" } as const;
+
+function anthropicAccount(
+  id: string,
+  overrides: Partial<ModelProviderAccount> = {}
+): ModelProviderAccount {
+  return {
+    id,
+    provider: "anthropic",
+    displayName: id,
+    externalAccountId: null,
+    status: "active",
+    createdBy: null,
+    updatedBy: null,
+    lastVerifiedAt: null,
+    lastUsedAt: null,
+    createdAt: 1,
+    updatedAt: 1,
+    archivedAt: null,
+    ...overrides,
+  };
+}
+
+function channelStores(
+  options: {
+    accounts?: ModelProviderAccount[];
+    channelDefault?: string | null;
+    workspaceDefault?: Pick<ProviderDefault, "providerAccountId" | "unattendedMode"> | null;
+  } = {}
+) {
+  const accounts = options.accounts ?? [
+    anthropicAccount(CHANNEL_ACCOUNT),
+    anthropicAccount(WORKSPACE_ACCOUNT),
+  ];
+  const channelDefault =
+    options.channelDefault === undefined ? CHANNEL_ACCOUNT : options.channelDefault;
+  const workspaceDefault =
+    options.workspaceDefault === undefined
+      ? { providerAccountId: WORKSPACE_ACCOUNT, unattendedMode: "provider_account" as const }
+      : options.workspaceDefault;
+  return {
+    accounts: { getById: async (id: string) => accounts.find((a) => a.id === id) ?? null },
+    defaults: {
+      get: async (provider: string): Promise<ProviderDefault | null> =>
+        provider === "anthropic" && workspaceDefault
+          ? {
+              provider: "anthropic",
+              ...workspaceDefault,
+              createdBy: null,
+              updatedBy: null,
+              createdAt: 1,
+              updatedAt: 1,
+            }
+          : null,
+    },
+    channelDefaults: {
+      getAccountId: async (_source: string, _channelId: string, provider: string) =>
+        provider === "anthropic" ? channelDefault : null,
+    },
+    adapters: { get: () => ({}) },
+  };
+}
+
+async function anthropic(
+  input: Partial<Parameters<typeof resolveProviderAccountSelections>[0]>,
+  resolutionStores = channelStores()
+) {
+  const resolved = await resolveProviderAccountSelections(
+    { unattended: true, harness: "claude", ...input },
+    resolutionStores
+  );
+  return resolved.find((auth) => auth.provider === "anthropic");
+}
+
+describe("channel default provider account", () => {
+  it("starts a channel's sessions on its default account", async () => {
+    expect(await anthropic({ channel: SLACK_CHANNEL })).toEqual({
+      provider: "anthropic",
+      authMode: "provider_account",
+      providerAccountId: CHANNEL_ACCOUNT,
+      selectionSource: "channel_default",
+    });
+  });
+
+  it("wins over the workspace's unattended API-key policy", async () => {
+    const result = await anthropic(
+      { channel: SLACK_CHANNEL },
+      channelStores({
+        workspaceDefault: { providerAccountId: WORKSPACE_ACCOUNT, unattendedMode: "api_key" },
+      })
+    );
+    expect(result).toMatchObject({
+      providerAccountId: CHANNEL_ACCOUNT,
+      selectionSource: "channel_default",
+    });
+  });
+
+  it("applies without a workspace default", async () => {
+    const result = await anthropic(
+      { channel: SLACK_CHANNEL },
+      channelStores({ workspaceDefault: null })
+    );
+    expect(result).toMatchObject({
+      providerAccountId: CHANNEL_ACCOUNT,
+      selectionSource: "channel_default",
+    });
+  });
+
+  it("yields to an explicit selection", async () => {
+    expect(
+      await anthropic({
+        channel: SLACK_CHANNEL,
+        explicit: { anthropic: { mode: "provider_account", accountId: WORKSPACE_ACCOUNT } },
+      })
+    ).toMatchObject({ providerAccountId: WORKSPACE_ACCOUNT, selectionSource: "explicit" });
+    expect(
+      await anthropic({ channel: SLACK_CHANNEL, explicit: { anthropic: { mode: "api_key" } } })
+    ).toMatchObject({ authMode: "api_key", selectionSource: "explicit" });
+  });
+
+  it("is ignored on a harness that cannot use the provider's accounts", async () => {
+    expect(await anthropic({ channel: SLACK_CHANNEL, harness: "opencode" })).toEqual({
+      provider: "anthropic",
+      authMode: "api_key",
+      selectionSource: "harness_fallback",
+    });
+  });
+
+  it.each([
+    ["disabled", anthropicAccount(CHANNEL_ACCOUNT, { status: "disabled" })],
+    ["reconnect required", anthropicAccount(CHANNEL_ACCOUNT, { status: "reconnect_required" })],
+    ["archived", anthropicAccount(CHANNEL_ACCOUNT, { archivedAt: 5 })],
+  ])(
+    "falls through to the workspace default when the channel default is %s",
+    async (_, unusable) => {
+      const result = await anthropic(
+        { channel: SLACK_CHANNEL },
+        channelStores({ accounts: [unusable, anthropicAccount(WORKSPACE_ACCOUNT)] })
+      );
+      expect(result).toMatchObject({
+        providerAccountId: WORKSPACE_ACCOUNT,
+        selectionSource: "unattended_policy",
+      });
+    }
+  );
+
+  it("falls through when the channel has no default", async () => {
+    const result = await anthropic(
+      { channel: SLACK_CHANNEL },
+      channelStores({ channelDefault: null })
+    );
+    expect(result).toMatchObject({
+      providerAccountId: WORKSPACE_ACCOUNT,
+      selectionSource: "unattended_policy",
+    });
+  });
+
+  it("changes nothing for a session without a channel", async () => {
+    expect(await anthropic({})).toMatchObject({
+      providerAccountId: WORKSPACE_ACCOUNT,
       selectionSource: "unattended_policy",
     });
   });

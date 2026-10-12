@@ -9,18 +9,27 @@ import {
   type HarnessId,
 } from "@open-inspect/shared/harnesses";
 import { ProviderDefaultStore } from "../db/provider-account-defaults";
+import {
+  ChannelProviderAccountDefaultStore,
+  type ChannelSource,
+} from "../db/channel-provider-account-defaults";
+import { createLogger } from "../logger";
 import { ModelProviderAccountStore } from "../db/model-provider-accounts";
 import type { SessionModelProviderAuthInput } from "../model-provider-accounts/provider-auth-contracts";
 import type { SqlDatabase } from "../db/sql-database";
 import { modelProviderAccountAdapterRegistry } from "../auth/model-provider-account-default-adapters";
 import {
   ProviderAccountSelectionPolicy,
+  ProviderAccountSelectionPolicyError,
   type ProviderAccountAdapterLookup,
 } from "../model-provider-accounts/selection-policy";
+
+const logger = createLogger("provider-account-resolution");
 
 interface ProviderAccountResolutionStores {
   defaults: Pick<ProviderDefaultStore, "get">;
   accounts: Pick<ModelProviderAccountStore, "getById">;
+  channelDefaults: Pick<ChannelProviderAccountDefaultStore, "getAccountId">;
   adapters: ProviderAccountAdapterLookup;
 }
 
@@ -42,6 +51,12 @@ const LEGACY_SCOPED_OAUTH_PROVIDERS: ReadonlySet<SubscriptionProviderId> = new S
   "xai",
 ]);
 
+/** The chat channel a bot-launched session came from. */
+export interface SessionChannelOrigin {
+  source: ChannelSource;
+  channelId: string;
+}
+
 export interface ProviderAccountResolutionInput {
   explicit?: ModelProviderSelections;
   unattended: boolean;
@@ -52,6 +67,12 @@ export interface ProviderAccountResolutionInput {
    * account the harness cannot use.
    */
   harness: HarnessId;
+  /**
+   * Channel the session was launched from. Its default account, when usable,
+   * outranks the workspace default: an admin bound that channel to a specific
+   * subscription on purpose.
+   */
+  channel?: SessionChannelOrigin;
 }
 
 function apiKey(
@@ -59,6 +80,53 @@ function apiKey(
   selectionSource: string
 ): SessionModelProviderAuthInput {
   return { provider, authMode: "api_key", selectionSource };
+}
+
+/**
+ * The channel's default account, when it can serve a new session. This is the
+ * one place the channel's candidates are chosen: when exhausted accounts start
+ * falling back to the provider's other active accounts, that logic lands here.
+ */
+async function resolveChannelDefault(
+  provider: SubscriptionProviderId,
+  input: ProviderAccountResolutionInput,
+  stores: ProviderAccountResolutionStores,
+  policy: ProviderAccountSelectionPolicy
+): Promise<SessionModelProviderAuthInput | null> {
+  const channel = input.channel;
+  if (!channel) return null;
+  // A harness that cannot run the provider's accounts keeps today's path
+  // (harness or API-key fallback) rather than binding an unusable account.
+  if (!harnessSupportsProviderAuth(input.harness, provider, "provider_account")) return null;
+  const defaultId = await stores.channelDefaults.getAccountId(
+    channel.source,
+    channel.channelId,
+    provider
+  );
+  if (!defaultId) return null;
+  try {
+    const account = await policy.validateDefault(provider, defaultId);
+    return {
+      provider,
+      authMode: "provider_account",
+      providerAccountId: account.id,
+      selectionSource: "channel_default",
+    };
+  } catch (cause) {
+    if (!(cause instanceof ProviderAccountSelectionPolicyError)) throw cause;
+    // An unhealthy channel default must not break the channel: the session
+    // continues on the workspace policy, and this log is how an admin notices.
+    logger.warn("provider_account.channel_default_skipped", {
+      event: "provider_account.channel_default_skipped",
+      channel_source: channel.source,
+      channel_id: channel.channelId,
+      provider,
+      provider_account_id: defaultId,
+      status: cause.status,
+      reason: cause.message,
+    });
+    return null;
+  }
 }
 
 async function resolveProvider(
@@ -86,6 +154,9 @@ async function resolveProvider(
       selectionSource: "explicit",
     };
   }
+
+  const channelDefault = await resolveChannelDefault(provider, input, stores, policy);
+  if (channelDefault) return channelDefault;
 
   const providerDefault = await stores.defaults.get(provider);
   if (!providerDefault) {
@@ -127,6 +198,7 @@ export function resolveSessionProviderAuth(
   return resolveProviderAccountSelections(input, {
     defaults: new ProviderDefaultStore(db),
     accounts: new ModelProviderAccountStore(db),
+    channelDefaults: new ChannelProviderAccountDefaultStore(db),
     adapters: modelProviderAccountAdapterRegistry,
   });
 }
