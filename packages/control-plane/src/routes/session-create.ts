@@ -258,6 +258,9 @@ export async function handleCreateSession(
       explicit: body.providerSelections,
       unattended: spawnSource !== undefined && spawnSource !== "user",
       harness,
+      // spawnSource comes from the verified service principal, so only the
+      // Slack bot can make a channel's default account apply.
+      channel: spawnSource === "slack-bot" ? body.origin : undefined,
     });
   } catch (e) {
     if (e instanceof ProviderAccountSelectionPolicyError) return error(e.message, e.status);
