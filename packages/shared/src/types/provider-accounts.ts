@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slackChannelIdSchema } from "./slack-channel-id";
 
 export const SUBSCRIPTION_PROVIDER_IDS = ["openai", "xai", "anthropic"] as const;
 export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDER_IDS)[number];
@@ -212,6 +213,7 @@ export type LegacyProviderCredentialsResponse = z.infer<
 >;
 
 export const modelProviderAccountDisplayNameSchema = z.string().trim().min(1).max(100);
+
 const credentialStringSchema = z.string().min(1).max(65_536);
 const externalAccountIdSchema = z.string().trim().min(1).max(512);
 
@@ -261,6 +263,21 @@ export const reconnectModelProviderAccountRequestSchema = z.discriminatedUnion("
 ]);
 export type ReconnectModelProviderAccountRequest = z.infer<
   typeof reconnectModelProviderAccountRequestSchema
+>;
+
+/** Upper bound on channels one account can be the default for. */
+export const MAX_PROVIDER_ACCOUNT_CHANNEL_ASSOCIATIONS = 50;
+
+/**
+ * Slack channel ids whose sessions start on this account. The set is replaced
+ * wholesale; an empty array clears it. Ids are opaque Slack identifiers, so
+ * only basic hygiene is checked (as for environment channel associations).
+ */
+export const providerAccountChannelAssociationsRequestSchema = z.strictObject({
+  channelAssociations: z.array(slackChannelIdSchema).max(MAX_PROVIDER_ACCOUNT_CHANNEL_ASSOCIATIONS),
+});
+export type ProviderAccountChannelAssociationsRequest = z.infer<
+  typeof providerAccountChannelAssociationsRequestSchema
 >;
 
 export const startProviderDeviceAuthorizationRequestSchema = z.discriminatedUnion("operation", [

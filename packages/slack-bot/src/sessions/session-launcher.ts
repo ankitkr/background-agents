@@ -209,6 +209,7 @@ export async function startSessionAndSendPrompt(
     slackUserId: actor.userId,
     actorDisplayName: actor.displayName,
     actorEmail: actor.email,
+    channelId: channel,
   });
   if (!session || "error" in session) {
     const failure = session?.error;

@@ -44,6 +44,8 @@ interface CreateSessionOptions {
   slackUserId?: string;
   actorDisplayName?: string;
   actorEmail?: string;
+  /** Slack channel the session was launched from; selects its default provider account. */
+  channelId?: string;
 }
 
 export type SendPromptResult =
@@ -110,6 +112,7 @@ export async function createSession(
     slackUserId,
     actorDisplayName,
     actorEmail,
+    channelId,
   } = options;
   const startTime = Date.now();
   const base = {
@@ -131,6 +134,7 @@ export async function createSession(
       reasoningEffort,
       actorDisplayName,
       actorEmail,
+      origin: channelId ? { source: "slack", channelId } : undefined,
     });
     const response = await signedControlPlaneFetch(
       env,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { sessionRepositoriesInputSchema } from "./repositories";
+import { slackChannelIdSchema } from "./slack-channel-id";
 import { teamIdSchema } from "./team-id";
 
 /** Maximum characters in an environment's display name. */
@@ -36,7 +37,7 @@ export const environmentRepositoriesInputSchema = sessionRepositoriesInputSchema
  * untouched, an array replaces it wholesale (empty clears).
  */
 const environmentChannelAssociationsSchema = z
-  .array(z.string().trim().min(1).max(64))
+  .array(slackChannelIdSchema)
   .max(MAX_ENVIRONMENT_CHANNEL_ASSOCIATIONS);
 
 export const createEnvironmentInputSchema = z.object({
