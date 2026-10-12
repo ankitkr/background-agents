@@ -7,6 +7,7 @@ import { sessionRepositoriesInputSchema } from "./repositories";
 import type { EventResponse } from "./sandbox-events";
 import { MAX_WEB_PROMPT_CHARS, promptContentSchema } from "./prompts";
 import { modelProviderSelectionsSchema } from "./provider-accounts";
+import { slackChannelIdSchema } from "./slack-channel-id";
 import { sessionVisibilitySchema } from "./teams";
 import {
   messageSourceSchema,
@@ -296,7 +297,7 @@ export const createSessionInputSchema = createSessionRequestBaseSchema
     origin: z
       .object({
         source: z.literal("slack"),
-        channelId: z.string().trim().min(1).max(64),
+        channelId: slackChannelIdSchema,
       })
       .optional(),
   })
