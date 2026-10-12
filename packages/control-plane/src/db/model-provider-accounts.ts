@@ -267,15 +267,27 @@ export class ModelProviderAccountStore {
   }
 
   async archive(id: string, actorId: string | null, now = Date.now()): Promise<boolean> {
-    const result = await this.db
-      .prepare(
-        `UPDATE model_provider_accounts
-         SET archived_at = ?, updated_by = ?, updated_at = ?,
-             lifecycle_version = lifecycle_version + 1
-         WHERE id = ? AND archived_at IS NULL`
-      )
-      .bind(now, actorId, now, id)
-      .run();
+    const [result] = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE model_provider_accounts
+           SET archived_at = ?, updated_by = ?, updated_at = ?,
+               lifecycle_version = lifecycle_version + 1
+           WHERE id = ? AND archived_at IS NULL`
+        )
+        .bind(now, actorId, now, id),
+      // An archived account can never be selected again, so its channels are
+      // released for reassignment in the same batch. A refused archive (the
+      // provider default) rolls this back with it.
+      this.db
+        .prepare(
+          `DELETE FROM channel_provider_account_defaults
+           WHERE provider_account_id = ? AND EXISTS (
+             SELECT 1 FROM model_provider_accounts WHERE id = ? AND archived_at IS NOT NULL
+           )`
+        )
+        .bind(id, id),
+    ]);
     return result.meta.changes > 0;
   }
 
