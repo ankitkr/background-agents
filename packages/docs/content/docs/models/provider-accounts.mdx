@@ -4,10 +4,13 @@ description: Connect ChatGPT, SuperGrok, and Claude subscriptions as installatio
 audience: admin
 owner: security
 status: published
-lastReviewed: "2026-10-08"
+lastReviewed: "2026-10-12"
 relatedCode:
   - packages/shared/src/types/provider-accounts.ts
   - packages/shared/src/harnesses.ts
+  - packages/control-plane/src/db/channel-provider-account-defaults.ts
+  - packages/control-plane/src/session/provider-account-resolution.ts
+  - packages/slack-bot/src/sessions/control-plane-client.ts
   - packages/web/src/components/settings/provider-accounts-settings.tsx
   - packages/web/src/components/settings/provider-device-authorization-dialog.tsx
   - packages/web/src/components/settings/provider-authorization-code-dialog.tsx
@@ -99,10 +102,10 @@ Each provider can have one default account. Choose **Make default** on an active
 
 The **Automated sessions** section sets, per provider, the **Automated authentication** used by sessions started by automations, bots, and other agents (this is the provider's unattended mode):
 
-| Option                       | Effect                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| **Use default: `<account>`** | Slack, GitHub, Linear, and unpinned automation runs use the default account. |
-| **No account (API key)**     | Unattended launches keep using the API key from secrets.                     |
+| Option                       | Effect                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Use default: `<account>`** | Slack, GitHub, Linear, and unpinned automation runs use the default account, unless a Slack channel has its own default (see [Default account per Slack channel](#default-account-per-slack-channel)). |
+| **No account (API key)**     | Unattended launches keep using the API key from secrets.                                                                                                                                               |
 
 Until a provider has a default the section reads **No default account selected**.
 
@@ -115,7 +118,8 @@ Defaults are resolved when a session starts. Changing a default never moves an e
   users can also pick Claude Agent in the Slack app's Home tab, which does the same even when the
   Slack harness setting is OpenCode. Set **Automated authentication** for Claude to **No account
   (API key)** if you want Claude Agent automations and integrations on an API key while interactive
-  Claude Agent sessions pick the account.
+  Claude Agent sessions pick the account, unless a Slack channel has its own default account (see
+  [Default account per Slack channel](#default-account-per-slack-channel)).
 </Callout>
 
 ## Select authentication per session
