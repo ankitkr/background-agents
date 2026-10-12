@@ -9,10 +9,10 @@ import {
   ChannelProviderAccountDefaultStore,
   type ChannelSource,
 } from "../db/channel-provider-account-defaults";
-import { createLogger } from "../logger";
 import { ModelProviderAccountStore } from "../db/model-provider-accounts";
 import type { SessionModelProviderAuthInput } from "../model-provider-accounts/provider-auth-contracts";
 import type { SqlDatabase } from "../db/sql-database";
+import { createLogger } from "../logger";
 import { modelProviderAccountAdapterRegistry } from "../auth/model-provider-account-default-adapters";
 import {
   ProviderAccountSelectionPolicy,
@@ -79,9 +79,10 @@ function apiKey(
 }
 
 /**
- * The channel's default account, when it can serve a new session. This is the
- * one place the channel's candidates are chosen: when exhausted accounts start
- * falling back to the provider's other active accounts, that logic lands here.
+ * The channel's default account, when it can serve a new session. A channel
+ * has one default per provider and it is where the channel's sessions start.
+ * An unusable default (disabled, needs reconnecting, archived) is skipped so
+ * the channel keeps working: the session falls back to the workspace policy.
  */
 async function resolveChannelDefault(
   provider: SubscriptionProviderId,
