@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelProviderAccount } from "../db/model-provider-accounts";
 import type { ProviderDefault } from "../db/provider-account-defaults";
 import { resolveProviderAccountSelections } from "./provider-account-resolution";
@@ -74,6 +74,8 @@ async function anthropic(
 }
 
 describe("channel default provider account", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("starts a channel's sessions on its default account", async () => {
     expect(await anthropic({ channel: SLACK_CHANNEL })).toEqual({
       provider: "anthropic",
@@ -131,6 +133,7 @@ describe("channel default provider account", () => {
   ])(
     "falls through to the workspace default when the channel default is %s",
     async (_, unusable) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const result = await anthropic(
         { channel: SLACK_CHANNEL },
         stores({ accounts: [unusable, account(WORKSPACE_ACCOUNT)] })
@@ -139,6 +142,15 @@ describe("channel default provider account", () => {
         providerAccountId: WORKSPACE_ACCOUNT,
         selectionSource: "unattended_policy",
       });
+      // The log is how an admin notices an unhealthy channel default.
+      const logged = warn.mock.calls.map(([line]) => JSON.parse(line as string));
+      expect(logged).toEqual([
+        expect.objectContaining({
+          event: "provider_account.channel_default_skipped",
+          provider_account_id: CHANNEL_ACCOUNT,
+          status: 409,
+        }),
+      ]);
     }
   );
 

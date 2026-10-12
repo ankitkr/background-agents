@@ -13,7 +13,10 @@ async function createClaudeSession(service: ServiceName, origin?: unknown) {
   const response = await serviceFetch("https://test.local/sessions", {
     service,
     method: "POST",
-    actor: service === "slack-bot" ? "slack:U-CHANNEL-DEFAULT" : undefined,
+    actor: {
+      "slack-bot": "slack:U-CHANNEL-DEFAULT",
+      "linear-bot": "linear:U-CHANNEL-DEFAULT",
+    }[service as string],
     body: JSON.stringify({
       title: "Channel default",
       harness: "claude",
@@ -58,6 +61,14 @@ describe("session create with a channel default", () => {
 
   it("ignores an origin asserted by anyone but the Slack bot", async () => {
     expect(await createClaudeSession("web", ORIGIN)).toMatchObject({
+      authMode: "api_key",
+      selectionSource: "api_key_fallback",
+    });
+  });
+
+  it("ignores an origin asserted by another unattended integration", async () => {
+    // Guards the gate against loosening to "any non-user spawn source".
+    expect(await createClaudeSession("linear-bot", ORIGIN)).toMatchObject({
       authMode: "api_key",
       selectionSource: "api_key_fallback",
     });
