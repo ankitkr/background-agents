@@ -139,6 +139,39 @@ The automation editor has a **Provider authentication** section with the same co
 
 Pins are retained when the configured model changes and apply only to future sessions. Switching the automation's harness drops any pin the new harness cannot honor. See [Your first automation](/automations/first-automation).
 
+## Default account per Slack channel
+
+A Slack channel can start its sessions on a specific account instead of the provider default. This
+is useful when one team's channel should draw on its own subscription. There is no settings control
+yet: while signed in to the web app as an Owner or Administrator, call its API (for example from the
+browser's developer console, which sends your session cookie):
+
+```js
+await fetch("/api/model-provider-accounts/<account-id>/channel-associations", {
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ channelAssociations: ["C0123456789"] }),
+}).then((response) => response.json());
+```
+
+The account ID is in the account list response (`GET /api/model-provider-accounts`); the channel ID
+is in Slack under the channel's details.
+
+The list replaces the account's channels; send `[]` to clear it. `GET` on the same path returns the
+current list. A channel can default to only one account per provider: assigning a channel that
+already belongs to another account returns `409` with that account's name, and you remove it there
+first.
+
+- The channel default applies to new sessions started from the channel, and wins over the
+  **Automated authentication** setting. Explicit choices still win over it.
+- Claude accounts apply only to Claude Agent sessions; a Slack user on OpenCode keeps using the API
+  key.
+- If the channel's account is disabled or needs reconnecting, sessions fall back to the provider
+  default and the control plane logs `provider_account.channel_default_skipped`.
+- Archiving the account removes its channel defaults.
+- Because a channel default outranks **Automated authentication**, switching that setting to API key
+  no longer stops bound channels from using their account; clear the channel's list instead.
+
 ## What account mode does to the sandbox
 
 - The provider's API key (`OPENAI_API_KEY`, `XAI_API_KEY`, or `ANTHROPIC_API_KEY`) from user-configured global, repository, or environment secrets, and legacy OAuth fields for that provider, are removed from the exposed secret environment. A non-secret managed marker is injected. This does **not** guarantee the key is absent from the sandbox: a deployment-level Anthropic key can still be supplied separately by the sandbox provider (on Modal).
