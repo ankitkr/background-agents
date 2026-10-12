@@ -1,7 +1,7 @@
 -- A channel's default provider account: where sessions started from that
--- channel begin. It is a starting point, not an exclusive assignment; a later
--- fallback picks another active account of the same provider when the default
--- is exhausted, so this holds exactly one row per channel and provider.
+-- channel begin. It is a starting point, not an exclusive assignment, so this
+-- holds exactly one row per channel and provider. If the account is unusable,
+-- the channel's sessions fall back to the workspace policy.
 --
 -- Archiving an account deletes its rows in the same batch as the archive
 -- (ModelProviderAccountStore.archive). That lives in the store, not a trigger,

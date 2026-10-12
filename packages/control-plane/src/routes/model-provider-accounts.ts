@@ -29,8 +29,10 @@ import {
   ChannelDefaultConflictError,
   ChannelProviderAccountDefaultStore,
 } from "../db/channel-provider-account-defaults";
-import type { ModelProviderAccount } from "../db/model-provider-accounts";
-import { ModelProviderAccountStore } from "../db/model-provider-accounts";
+import {
+  type ModelProviderAccount,
+  ModelProviderAccountStore,
+} from "../db/model-provider-accounts";
 import { D1ModelProviderAccountAtomicWriter } from "../db/model-provider-account-atomic-writer";
 import { ProviderCredentialStore } from "../db/provider-account-credentials";
 import { ProviderAccountAuthorizationStore } from "../db/provider-account-authorizations";
@@ -471,6 +473,7 @@ modelProviderAccountRoutes.put(
           event: "provider_account.channel_associations_updated",
           request_id: ctx.request_id,
           trace_id: ctx.trace_id,
+          actor_user_id: ctx.principal.userId,
           provider: account.provider,
           provider_account_id: account.id,
           channel_count: channelAssociations.length,
