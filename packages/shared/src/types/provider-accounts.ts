@@ -212,6 +212,23 @@ export type LegacyProviderCredentialsResponse = z.infer<
 >;
 
 export const modelProviderAccountDisplayNameSchema = z.string().trim().min(1).max(100);
+
+/** Upper bound on channels one account can be the default for. */
+export const MAX_PROVIDER_ACCOUNT_CHANNEL_ASSOCIATIONS = 50;
+
+/**
+ * Slack channel ids whose sessions start on this account. The set is replaced
+ * wholesale; an empty array clears it. Ids are opaque Slack identifiers, so
+ * only basic hygiene is checked (as for environment channel associations).
+ */
+export const providerAccountChannelAssociationsRequestSchema = z.strictObject({
+  channelAssociations: z
+    .array(z.string().trim().min(1).max(64))
+    .max(MAX_PROVIDER_ACCOUNT_CHANNEL_ASSOCIATIONS),
+});
+export type ProviderAccountChannelAssociationsRequest = z.infer<
+  typeof providerAccountChannelAssociationsRequestSchema
+>;
 const credentialStringSchema = z.string().min(1).max(65_536);
 const externalAccountIdSchema = z.string().trim().min(1).max(512);
 
