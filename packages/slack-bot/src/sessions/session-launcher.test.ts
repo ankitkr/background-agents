@@ -207,6 +207,12 @@ describe("startSessionAndSendPrompt harness", () => {
     expect(createSession).toHaveBeenCalledWith(env, expect.objectContaining({ harness, model }));
   });
 
+  it("tells the control plane which channel launched the session", async () => {
+    const env = makeEnv();
+    await startSessionAndSendPrompt(env, options);
+    expect(createSession).toHaveBeenCalledWith(env, expect.objectContaining({ channelId: "C123" }));
+  });
+
   it("refuses a model the user's harness cannot run without creating a session", async () => {
     const env = makeEnv();
 

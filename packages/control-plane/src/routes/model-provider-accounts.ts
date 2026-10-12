@@ -7,6 +7,7 @@ import {
   modelProviderAccountDisplayNameSchema,
   modelProviderAccountDefaultRequestSchema,
   modelProviderAccountStatusSchema,
+  providerAccountChannelAssociationsRequestSchema,
   reconnectModelProviderAccountRequestSchema,
   startProviderAuthorizationCodeRequestSchema,
   startProviderDeviceAuthorizationRequestSchema,
@@ -22,7 +23,14 @@ import {
   ModelProviderAccountBroker,
   ModelProviderAccountBrokerError,
 } from "../auth/model-provider-account-broker";
-import { ModelProviderAccountStore } from "../db/model-provider-accounts";
+import {
+  ChannelDefaultConflictError,
+  ChannelProviderAccountDefaultStore,
+} from "../db/channel-provider-account-defaults";
+import {
+  type ModelProviderAccount,
+  ModelProviderAccountStore,
+} from "../db/model-provider-accounts";
 import { D1ModelProviderAccountAtomicWriter } from "../db/model-provider-account-atomic-writer";
 import { ProviderCredentialStore } from "../db/provider-account-credentials";
 import { ProviderAccountAuthorizationStore } from "../db/provider-account-authorizations";
@@ -156,6 +164,18 @@ function accountId(id: string): string | Response {
   return MODEL_PROVIDER_ACCOUNT_ID_PATTERN.test(id)
     ? id
     : error("Invalid provider account ID", 400);
+}
+
+/** Channel defaults only ever point at live accounts; archived ones read as gone. */
+async function liveAccount(
+  accounts: { get(id: string): Promise<ModelProviderAccount> },
+  id: string
+): Promise<ModelProviderAccount> {
+  const account = await accounts.get(id);
+  if (account.archivedAt !== null) {
+    throw new ProviderAccountServiceError("Provider account not found", 404);
+  }
+  return account;
 }
 
 async function accountOperation(
@@ -404,6 +424,61 @@ modelProviderAccountRoutes.patch("/model-provider-accounts/:id", ACCOUNTS_MANAGE
       json({ account: await accounts.rename(id, body.displayName, ctx.principal.userId) })
     );
   })
+);
+modelProviderAccountRoutes.get(
+  "/model-provider-accounts/:id/channel-associations",
+  ACCOUNTS_READ,
+  (c) =>
+    dispatch(c, async (_request, env, params, ctx) => {
+      const id = accountId(params.id);
+      if (id instanceof Response) return id;
+      return accountOperation(ctx, async () => {
+        const account = await liveAccount(service(env, ctx), id);
+        const channelAssociations = await new ChannelProviderAccountDefaultStore(
+          ctx.db
+        ).listChannelIds("slack", account.id);
+        return json({ channelAssociations });
+      });
+    })
+);
+modelProviderAccountRoutes.put(
+  "/model-provider-accounts/:id/channel-associations",
+  ACCOUNTS_MANAGE,
+  (c) =>
+    dispatch(c, async (request, env, params, ctx) => {
+      const id = accountId(params.id);
+      if (id instanceof Response) return id;
+      const body = await parseBody(
+        request,
+        providerAccountChannelAssociationsRequestSchema,
+        "Invalid channel associations"
+      );
+      if (body instanceof Response) return body;
+      return accountOperation(ctx, async () => {
+        const account = await liveAccount(service(env, ctx), id);
+        const channels = new ChannelProviderAccountDefaultStore(ctx.db);
+        let bound: boolean;
+        try {
+          bound = await channels.replaceForAccount("slack", account, body.channelAssociations);
+        } catch (cause) {
+          if (!(cause instanceof ChannelDefaultConflictError)) throw cause;
+          return json({ error: cause.message, conflicts: cause.conflicts }, 409);
+        }
+        // Archived between the liveness check and the write: nothing was bound.
+        if (!bound) return error("Provider account not found", 404);
+        const channelAssociations = await channels.listChannelIds("slack", account.id);
+        logger.info("provider_account.channel_associations_updated", {
+          event: "provider_account.channel_associations_updated",
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          actor_user_id: ctx.principal.userId,
+          provider: account.provider,
+          provider_account_id: account.id,
+          channel_count: channelAssociations.length,
+        });
+        return json({ channelAssociations });
+      });
+    })
 );
 for (const action of ["verify", "disable", "enable"] as const) {
   modelProviderAccountRoutes.post(`/model-provider-accounts/:id/${action}`, ACCOUNTS_MANAGE, (c) =>

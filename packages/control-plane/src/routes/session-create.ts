@@ -258,6 +258,9 @@ export async function handleCreateSession(
       explicit: body.providerSelections,
       unattended: spawnSource !== undefined && spawnSource !== "user",
       harness,
+      // spawnSource comes from the verified service principal, so only the
+      // Slack bot can make a channel's default account apply.
+      channel: spawnSource === "slack-bot" ? body.origin : undefined,
     });
   } catch (e) {
     if (e instanceof ProviderAccountSelectionPolicyError) return error(e.message, e.status);
@@ -333,6 +336,27 @@ export async function handleCreateSession(
       trace_id: ctx.trace_id,
     });
     return error("Failed to create session", 500);
+  }
+
+  // Bots enroll an actor on its first control-plane request, which for Slack is
+  // a nameless channel read (repos, environments) before this one, so admission
+  // never saw the profile sent here and the user would stay "Unnamed". Fill
+  // only what is empty, and only after the session exists, so a denied request
+  // writes nothing. Email is left alone: it must not relink a known actor.
+  if (ctx.principal?.kind === "service" && ctx.principal.actor && resolvedUserId) {
+    try {
+      await userStore.fillMissingProfile(resolvedUserId, {
+        displayName: body.actorDisplayName,
+        avatarUrl: body.actorAvatarUrl,
+      });
+    } catch (e) {
+      logger.warn("Failed to fill missing actor profile", {
+        event: "session_create.actor_profile_fill_failed",
+        error: e instanceof Error ? e.message : String(e),
+        session_id: sessionId,
+        trace_id: ctx.trace_id,
+      });
+    }
   }
 
   const result: CreateSessionResponse = {

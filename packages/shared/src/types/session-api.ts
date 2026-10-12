@@ -6,6 +6,7 @@ import { sessionRepositoriesInputSchema } from "./repositories";
 import type { EventResponse } from "./sandbox-events";
 import { MAX_WEB_PROMPT_CHARS, promptContentSchema } from "./prompts";
 import { modelProviderSelectionsSchema } from "./provider-accounts";
+import { slackChannelIdSchema } from "./slack-channel-id";
 import { sessionVisibilitySchema } from "./teams";
 import {
   messageSourceSchema,
@@ -287,6 +288,17 @@ export const createSessionInputSchema = createSessionRequestBaseSchema
     actorDisplayName: z.string().optional(),
     actorEmail: z.string().optional(),
     actorAvatarUrl: z.string().optional(),
+    /**
+     * The chat channel a bot launched this session from. Honoured only on the
+     * Slack bot's own requests, where it selects that channel's default
+     * provider account; other callers choose accounts via providerSelections.
+     */
+    origin: z
+      .object({
+        source: z.literal("slack"),
+        channelId: slackChannelIdSchema,
+      })
+      .optional(),
   })
   .refine(hasMatchingRepositoryIdentifiers, {
     message: "repoOwner and repoName must be provided together",

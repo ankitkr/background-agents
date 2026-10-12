@@ -299,6 +299,18 @@ describe("RBAC routes", () => {
       ["/model-provider-accounts", "GET", "provider_accounts.read", undefined],
       ["/model-provider-account-defaults", "GET", "provider_accounts.read", undefined],
       ["/model-provider-accounts/legacy-credentials", "GET", "provider_accounts.read", undefined],
+      [
+        `/model-provider-accounts/${"0".repeat(32)}/channel-associations`,
+        "GET",
+        "provider_accounts.read",
+        undefined,
+      ],
+      [
+        `/model-provider-accounts/${"0".repeat(32)}/channel-associations`,
+        "PUT",
+        "provider_accounts.manage",
+        { channelAssociations: [] },
+      ],
     ] as const) {
       const denied = await serviceFetch(`https://cp.test${path}`, {
         method,
