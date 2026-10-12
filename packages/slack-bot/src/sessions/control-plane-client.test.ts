@@ -222,6 +222,29 @@ describe("control plane client request payloads", () => {
     expect(parseRequestBody(fetch)).not.toHaveProperty("visibility");
   });
 
+  it("sends the launching channel as the session origin", async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      okJson({ sessionId: "s1", status: "created" })
+    );
+    await createSession(makeEnv(fetch), {
+      target,
+      harness: "claude",
+      model: "anthropic/claude-haiku-4-5",
+      channelId: "C123",
+    });
+    expect(parseRequestBody(fetch)).toMatchObject({
+      origin: { source: "slack", channelId: "C123" },
+    });
+  });
+
+  it("sends no origin without a channel", async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      okJson({ sessionId: "s1", status: "created" })
+    );
+    await createSession(makeEnv(fetch), { target, harness: "opencode", model: "openai/gpt-5.4" });
+    expect(parseRequestBody(fetch)).not.toHaveProperty("origin");
+  });
+
   it.each([
     [403, { code: "session_action_denied", reason_code: "not_member" }],
     [403, { code: "not_member" }],
